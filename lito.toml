@@ -1,0 +1,26 @@
+[package]
+name = "liunicode"
+version = "0.1.0"
+license = "MIT OR Apache-2.0"
+authors = ["hypengw <hypengwip@gmail.com>"]
+
+[lib]
+name = "liunicode"
+module = "liunicode"
+archive = "liunicode"
+
+[profile.base]
+exceptions = false
+rtti = false
+
+[dependencies]
+rstd-std = { version = "0.1.5", pub = true }
+
+[dev-dependencies]
+rstd-test = { version = "0.1.5" }
+rstd-nostd = { version = "0.1.5", usage = "link" }
+
+[[test]]
+name = "liunicode"
+sources = ["tests/main.cpp", "tests/unicode.cpp"]
+link-stdlib = false

@@ -1,0 +1,35 @@
+[package]
+name = "liunicode-size"
+version = "0.1.0"
+[profile.base]
+exceptions = false
+rtti = false
+[dependencies]
+liunicode = { path = "../.." }
+rstd-std = { version = "0.1.5" }
+rstd-nostd = { version = "0.1.5", usage = "link" }
+
+[[bin]]
+name = "empty"
+sources = ["empty.cpp"]
+link-stdlib = false
+
+[[bin]]
+name = "casing"
+sources = ["casing.cpp"]
+link-stdlib = false
+
+[[bin]]
+name = "segmentation"
+sources = ["segmentation.cpp"]
+link-stdlib = false
+
+[[bin]]
+name = "normalization"
+sources = ["normalization.cpp"]
+link-stdlib = false
+
+[[bin]]
+name = "all"
+sources = ["all.cpp"]
+link-stdlib = false

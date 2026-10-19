@@ -6,8 +6,8 @@ exceptions = false
 rtti = false
 [dependencies]
 liunicode = { path = "../.." }
-rstd-std = { version = "0.1.5" }
-rstd-nostd = { version = "0.1.5", usage = "link" }
+rstd-std = { version = "0.1.9" }
+rstd-nostd = { version = "0.1.9", usage = "link" }
 
 [[bin]]
 name = "empty"

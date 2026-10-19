@@ -14,11 +14,11 @@ exceptions = false
 rtti = false
 
 [dependencies]
-rstd-std = { version = "0.1.5", pub = true }
+rstd-std = { version = "0.1.9", pub = true }
 
 [dev-dependencies]
-rstd-test = { version = "0.1.5" }
-rstd-nostd = { version = "0.1.5", usage = "link" }
+rstd-test = { version = "0.1.9" }
+rstd-nostd = { version = "0.1.9", usage = "link" }
 
 [[test]]
 name = "liunicode"

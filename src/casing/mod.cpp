@@ -15,6 +15,24 @@ auto id_continue(unsigned cp) -> bool {
 auto simple_case_fold(unsigned cp) -> unsigned {
     return scalar(storage, FoldTable, cp, cp);
 }
+auto case_fold(unsigned cp) -> CaseMapping {
+    auto entry = mapping(storage, FullFoldTable, cp);
+    return entry.size
+               ? CaseMapping { entry.values[0], entry.values[1], entry.values[2], entry.size }
+               : CaseMapping { cp, 0, 0, 1 };
+}
+auto case_fold_utf8(ref<str> text) -> Result<String, Error> {
+    auto decoded = decode_utf8(text);
+    if (decoded.is_err()) return Err(decoded.unwrap_err());
+    String result;
+    for (auto cp : decoded.unwrap()) {
+        auto mapped = case_fold(cp);
+        if (mapped.size) result.push(char32_t(mapped.first));
+        if (mapped.size > 1) result.push(char32_t(mapped.second));
+        if (mapped.size > 2) result.push(char32_t(mapped.third));
+    }
+    return Ok(rstd::move(result));
+}
 
 auto cased(unsigned cp) -> bool {
     return contains(storage, CasedTable, cp);

@@ -81,7 +81,15 @@ def language_tables(data):
         else:
             ranges.append((first, last))
     fold = {}
+    full_fold = {}
     for fields in data['CaseFolding.txt']:
+        if len(fields) >= 3 and fields[1] in ('C', 'F'):
+            source = int(fields[0], 16)
+            targets = tuple(int(value, 16) for value in fields[2].split())
+            if not 1 <= len(targets) <= 3:
+                raise RuntimeError('full case folding exceeds three code points')
+            if targets != (source,):
+                full_fold[source] = targets
         if len(fields) >= 3 and fields[1] in ('C', 'S'):
             source, target = int(fields[0], 16), int(fields[2], 16)
             if source != target:
@@ -133,7 +141,7 @@ def language_tables(data):
                 raise RuntimeError(f'duplicate composition pair {targets}')
             compositions[targets] = source
 
-    return properties, fold, lower_full, upper_full, combining_classes, decompositions, compositions
+    return properties, fold, full_fold, lower_full, upper_full, combining_classes, decompositions, compositions
 
 
 def property_tables(data):
@@ -426,7 +434,7 @@ def segmentation(data, output):
 
 def generate(data, output):
     output.mkdir(parents=True, exist_ok=True)
-    properties, fold, lower, upper_full, combining, decompositions, compositions = language_tables(data)
+    properties, fold, full_fold, lower, upper_full, combining, decompositions, compositions = language_tables(data)
     encoder = Encoder(); constants = {}
     for name,ranges in properties.items(): constants[name+'Table'] = encoder.ranges(ranges)
     for name,values in [('FoldTable',fold)]:
@@ -435,6 +443,7 @@ def generate(data, output):
     inverse = {}
     for cp,target in sorted(fold.items()): inverse.setdefault(target,[]).append(cp)
     constants['FoldSourcesTable'] = encoder.table(inverse.items())
+    constants['FullFoldTable'] = encoder.table(full_fold.items())
     emit_group(output,'casing',encoder,constants)
     encoder = Encoder(); constants = {}
     constants['CombiningTable'] = encoder.table((key,(value,)) for key,value in combining.items())

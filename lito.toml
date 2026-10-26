@@ -24,3 +24,8 @@ rstd-nostd = { version = "0.1.9", usage = "link" }
 name = "liunicode"
 sources = ["tests/main.cpp", "tests/unicode.cpp"]
 link-stdlib = false
+
+[[test]]
+name = "liunicode-case-fold"
+sources = ["tests/main.cpp", "tests/case_fold.cpp"]
+link-stdlib = false

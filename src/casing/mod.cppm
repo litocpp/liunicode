@@ -14,6 +14,8 @@ enum class Case
 auto id_start(unsigned cp) -> bool;
 auto id_continue(unsigned cp) -> bool;
 auto simple_case_fold(unsigned cp) -> unsigned;
+auto case_fold(unsigned cp) -> CaseMapping;
+auto case_fold_utf8(rstd::ref<rstd::str> text) -> rstd::Result<String, Error>;
 auto cased(unsigned cp) -> bool;
 auto case_ignorable(unsigned cp) -> bool;
 auto lowercase(unsigned cp) -> CaseMapping;

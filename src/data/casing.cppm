@@ -13,5 +13,6 @@ inline constexpr unsigned FoldTable = 4;
 inline constexpr unsigned LowercaseTable = 5;
 inline constexpr unsigned UppercaseTable = 6;
 inline constexpr unsigned FoldSourcesTable = 7;
+inline constexpr unsigned FullFoldTable = 8;
 }
 // clang-format on

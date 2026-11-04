@@ -35,12 +35,9 @@ auto integer(const char* data, unsigned& position) -> unsigned long long {
     }
 }
 
-auto mapping(const Storage&     storage,
-             unsigned           table_id,
-             unsigned long long target,
-             bool               exact = true) -> Mapping {
-    const auto& table = storage.tables[table_id];
-    unsigned    first = table.index, last = first + table.count;
+auto checkpoint(const Storage& storage, const Table& table, unsigned long long target)
+    -> const Checkpoint* {
+    unsigned first = table.index, last = first + table.count;
     while (first < last) {
         auto middle = first + (last - first) / 2;
         if (storage.index[middle].key <= target)
@@ -48,8 +45,17 @@ auto mapping(const Storage&     storage,
         else
             last = middle;
     }
-    if (first == table.index) return {};
-    auto               position = storage.index[first - 1].offset;
+    return first == table.index ? nullptr : &storage.index[first - 1];
+}
+
+auto mapping(const Storage&     storage,
+             unsigned           table_id,
+             unsigned long long target,
+             bool               exact = true) -> Mapping {
+    const auto& table = storage.tables[table_id];
+    auto        block = checkpoint(storage, table, target);
+    if (! block) return {};
+    auto               position = block->offset;
     unsigned long long key {};
     Mapping            result;
     for (unsigned row {}; row < 32 && position < table.end; ++row) {
@@ -68,10 +74,22 @@ auto mapping(const Storage&     storage,
     return result;
 }
 
-auto contains(const Storage& storage, unsigned table, unsigned cp) -> bool {
+auto contains(const Storage& storage, unsigned table_id, unsigned cp) -> bool {
     if (cp > 0x10ffff) return false;
-    auto entry = mapping(storage, table, cp, false);
-    return entry.size && cp - entry.key <= entry.values[0];
+    const auto& table = storage.tables[table_id];
+    auto        block = checkpoint(storage, table, cp);
+    if (! block) return false;
+    auto     position = block->offset;
+    unsigned key {};
+    for (unsigned row {}; row < 32 && position < table.end; ++row) {
+        auto delta = static_cast<unsigned>(integer(storage.data, position));
+        key        = row ? key + delta : delta;
+        if (key > cp) return false;
+        // Membership rows store only a range length after the key.
+        auto length = static_cast<unsigned>(integer(storage.data, position));
+        if (cp - key <= length) return true;
+    }
+    return false;
 }
 
 auto scalar(const Storage& storage, unsigned table, unsigned cp, unsigned fallback) -> unsigned {

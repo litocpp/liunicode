@@ -262,7 +262,73 @@ auto hexadecimal(ref<str> text) -> Vec<unsigned> {
     finish();
     return output;
 }
+auto named_property(PropertyGroup group, ref<str> name) -> Property {
+    Vec<u16> units;
+    for (auto cp : name->as_bytes()) units.push(u16(cp.to_primitive()));
+    return property(group, units.as_slice()).unwrap();
+}
 } // namespace
+
+TEST(Unicode, PropertyMembershipMatchesPunctuationAndSymbolSourceData) {
+    Vec<unsigned> expected[2];
+    records("UnicodeData.txt"_str, [&](slice<String> fields) {
+        auto category = fields[usize(2)].as_str();
+        if (! category->starts_with("P"_str) && ! category->starts_with("S"_str)) return;
+        EXPECT_FALSE(fields[usize(1)].as_str()->contains("First>"_str));
+        EXPECT_FALSE(fields[usize(1)].as_str()->contains("Last>"_str));
+        expected[category->starts_with("S"_str) ? 1 : 0].push(
+            unsigned(hexadecimal(fields[usize()].as_str())[usize()]));
+    });
+    Property properties[] { named_property(PropertyGroup::GeneralCategory, "P"_str),
+                            named_property(PropertyGroup::GeneralCategory, "S"_str) };
+    for (unsigned i {}; i < 2; ++i) {
+        ASSERT_GT(expected[i].len(), usize(500));
+        usize next;
+        for (unsigned cp {}; cp <= 0x10ffff; ++cp) {
+            auto present = next < expected[i].len() && expected[i][next] == cp;
+            if (properties[i].contains(cp) != present) {
+                rstd::io::println("property {} mismatch at {}", i, cp);
+                FAIL();
+                return;
+            }
+            if (present) ++next;
+        }
+        EXPECT_EQ(next, expected[i].len());
+        EXPECT_FALSE(properties[i].contains(0x110000));
+        EXPECT_FALSE(properties[i].contains(~0u));
+    }
+}
+
+TEST(Unicode, PropertyMembershipPreservesEmptyTablesAndCodePointDomain) {
+    auto ascii = named_property(PropertyGroup::Binary, "ASCII"_str);
+    EXPECT_TRUE(ascii.contains(0));
+    EXPECT_TRUE(ascii.contains(0x7f));
+    EXPECT_FALSE(ascii.contains(0x80));
+    auto any = named_property(PropertyGroup::Binary, "Any"_str);
+    EXPECT_TRUE(any.contains(0));
+    EXPECT_TRUE(any.contains(0xd800));
+    EXPECT_TRUE(any.contains(0x10ffff));
+    EXPECT_FALSE(any.contains(0x110000));
+    EXPECT_FALSE(any.contains(~0u));
+    auto surrogate = named_property(PropertyGroup::GeneralCategory, "Cs"_str);
+    EXPECT_FALSE(surrogate.contains(0xd7ff));
+    EXPECT_TRUE(surrogate.contains(0xd800));
+    EXPECT_TRUE(surrogate.contains(0xdfff));
+    EXPECT_FALSE(surrogate.contains(0xe000));
+    auto     empty = named_property(PropertyGroup::Script, "Katakana_Or_Hiragana"_str);
+    unsigned points[] { 0u, 0x3042u, 0x30a2u, 0x10ffffu };
+    for (auto cp : points) EXPECT_FALSE(empty.contains(cp));
+    auto script    = named_property(PropertyGroup::Script, "Hiragana"_str);
+    auto extension = named_property(PropertyGroup::ScriptExtensions, "Hiragana"_str);
+    EXPECT_TRUE(script.contains(0x3042));
+    EXPECT_FALSE(script.contains(0x30fc));
+    EXPECT_TRUE(extension.contains(0x30fc));
+    EXPECT_FALSE(extension.contains('A'));
+    EXPECT_FALSE(Property().contains('A'));
+    auto sequence = named_property(PropertyGroup::Strings, "Basic_Emoji"_str);
+    EXPECT_FALSE(sequence.contains(0x1f680));
+}
+
 TEST(Unicode, CaseMappingSourceData) {
     unsigned folds {}, specials {};
     records("CaseFolding.txt"_str, [&](slice<String> fields) {

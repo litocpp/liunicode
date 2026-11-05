@@ -7,7 +7,9 @@ inline constexpr unsigned version_major = 18, version_minor = 0, version_patch =
 enum class Error
 {
     InvalidUtf8,
-    InvalidCodePoint
+    InvalidCodePoint,
+    InvalidSourceRange,
+    Cancelled
 };
 // Code point APIs preserve surrogate values; UTF-8 APIs accept only valid
 // scalar encodings.

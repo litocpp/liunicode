@@ -30,31 +30,65 @@ auto composition(unsigned first, unsigned second) -> unsigned {
 } // namespace liunicode
 namespace
 {
-void decompose(unsigned cp, bool compatibility, Vec<unsigned>& output) {
+auto point(unsigned value) -> unsigned {
+    return value;
+}
+auto point(const liunicode::SourceScalar& value) -> unsigned {
+    return value.code_point;
+}
+auto with_point(unsigned, unsigned value) -> unsigned {
+    return value;
+}
+auto with_point(liunicode::SourceScalar value, unsigned cp) -> liunicode::SourceScalar {
+    value.code_point = cp;
+    return value;
+}
+void combine(unsigned& value, unsigned, unsigned cp) {
+    value = cp;
+}
+void combine(liunicode::SourceScalar& value, const liunicode::SourceScalar& other, unsigned cp) {
+    value.code_point = cp;
+    if (other.begin < value.begin) value.begin = other.begin;
+    if (other.end > value.end) value.end = other.end;
+}
+auto cancelled(liunicode::NormalizationControl control) -> bool {
+    return control.cancelled && control.cancelled(control.context);
+}
+template<class T>
+auto decompose(T                               source,
+               bool                            compatibility,
+               Vec<T>&                         output,
+               liunicode::NormalizationControl control) -> bool {
+    if (cancelled(control)) return false;
+    auto cp = point(source);
     if (cp >= 0xac00 && cp <= 0xd7a3) {
         auto index = cp - 0xac00;
-        output.push(unsigned(0x1100 + index / 588));
-        output.push(unsigned(0x1161 + index % 588 / 28));
-        if (index % 28) output.push(unsigned(0x11a7 + index % 28));
-        return;
+        output.push(with_point(source, 0x1100 + index / 588));
+        output.push(with_point(source, 0x1161 + index % 588 / 28));
+        if (index % 28) output.push(with_point(source, 0x11a7 + index % 28));
+        return true;
     }
     auto mapping = liunicode::decomposition(cp, compatibility);
     if (mapping.length) {
         for (unsigned index = 0; index < mapping.length; ++index)
-            decompose(mapping.points[index], compatibility, output);
-        return;
+            if (! decompose(
+                    with_point(source, mapping.points[index]), compatibility, output, control))
+                return false;
+        return true;
     }
     auto combining = liunicode::combining_class(cp);
     auto index     = output.len();
-    output.push(unsigned(cp));
-    if (! combining) return;
+    output.push(T(source));
+    if (! combining) return true;
     while (index > usize()) {
-        auto preceding = liunicode::combining_class(output[index - usize(1)]);
+        if (cancelled(control)) return false;
+        auto preceding = liunicode::combining_class(point(output[index - usize(1)]));
         if (! preceding || preceding <= combining) break;
         output[index] = output[index - usize(1)];
         --index;
     }
-    output[index] = cp;
+    output[index] = source;
+    return true;
 }
 
 auto compose_pair(unsigned first, unsigned second) -> unsigned {
@@ -69,33 +103,67 @@ auto compose_pair(unsigned first, unsigned second) -> unsigned {
 
 namespace liunicode
 {
-auto normalize(slice<unsigned> points, Normalization form) -> Result<Vec<unsigned>, Error> {
+template<class T>
+auto normalize_units(slice<T> points, Normalization form, NormalizationControl control = {})
+    -> Result<Vec<T>, Error> {
+    if (cancelled(control)) return Err(Error::Cancelled);
     bool compatibility = form == Normalization::NFKC || form == Normalization::NFKD;
     bool composed      = form == Normalization::NFC || form == Normalization::NFKC;
-    for (auto cp : points)
-        if (cp > 0x10ffff) return Err(Error::InvalidCodePoint);
-    Vec<unsigned> decomposed;
-    for (auto cp : points) decompose(cp, compatibility, decomposed);
+    for (auto value : points) {
+        if (cancelled(control)) return Err(Error::Cancelled);
+        if (point(value) > 0x10ffff) return Err(Error::InvalidCodePoint);
+    }
+    Vec<T> decomposed;
+    for (auto value : points)
+        if (! decompose(value, compatibility, decomposed, control)) return Err(Error::Cancelled);
     if (! composed || decomposed.len() == usize()) return Ok(rstd::move(decomposed));
 
-    Vec<unsigned> result;
-    result.push(unsigned(decomposed[usize()]));
+    Vec<T> result;
+    result.push(T(decomposed[usize()]));
     usize    starter;
     unsigned last_combining = 0;
     for (usize index(1); index < decomposed.len(); ++index) {
-        auto cp        = decomposed[index];
+        if (cancelled(control)) return Err(Error::Cancelled);
+        auto unit      = decomposed[index];
+        auto cp        = point(unit);
         auto combining = liunicode::combining_class(cp);
         auto composite = last_combining == 0 || last_combining < combining
-                             ? compose_pair(result[starter], cp)
+                             ? compose_pair(point(result[starter]), cp)
                              : 0;
         if (composite) {
-            result[starter] = composite;
+            combine(result[starter], unit, composite);
             continue;
         }
         if (! combining) starter = result.len();
-        result.push(unsigned(cp));
+        result.push(T(unit));
         last_combining = combining;
     }
     return Ok(rstd::move(result));
+}
+auto normalize(slice<unsigned> points, Normalization form) -> Result<Vec<unsigned>, Error> {
+    return normalize_units(points, form);
+}
+auto normalize_with_source(slice<SourceScalar>  points,
+                           Normalization        form,
+                           NormalizationControl control) -> Result<Vec<SourceScalar>, Error> {
+    if (cancelled(control)) return Err(Error::Cancelled);
+    for (auto value : points) {
+        if (cancelled(control)) return Err(Error::Cancelled);
+        if (value.begin > value.end) return Err(Error::InvalidSourceRange);
+    }
+    return normalize_units(points, form, control);
+}
+auto normalize_utf8_with_source(ref<str> text, Normalization form)
+    -> Result<Vec<SourceScalar>, Error> {
+    if (rstd::str_::from_utf8(text->as_bytes()).is_err()) return Err(Error::InvalidUtf8);
+    Vec<SourceScalar> points;
+    auto              chars = text->chars();
+    usize             offset;
+    for (auto cp = chars.next(); cp.is_some(); cp = chars.next()) {
+        auto end = offset + cp->len_utf8();
+        points.push(SourceScalar { unsigned(cp->to_primitive()), offset, end });
+        offset = end;
+    }
+    return normalize_with_source(points.as_slice(), form, {});
 }
 } // namespace liunicode

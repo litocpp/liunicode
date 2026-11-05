@@ -169,6 +169,97 @@ TEST(Unicode, CaseContextsAndInvalidInputs) {
     EXPECT_EQ(segment_utf8(""_str).unwrap().graphemes.len(), usize(1));
     EXPECT_TRUE(segment_utf8(""_str).unwrap().words.is_empty());
 }
+TEST(Unicode, NormalizationSourceRanges) {
+    SourceScalar original[] { { 0xfb03u, usize(), usize(3) },
+                              { 'a', usize(3), usize(4) },
+                              { 0x315u, usize(4), usize(6) },
+                              { 0x300u, usize(6), usize(8) },
+                              { 0xd800u, usize(8), usize(9) } };
+    unsigned     values[] { 0xfb03, 'a', 0x315, 0x300, 0xd800 };
+    for (unsigned form {}; form < 4; ++form) {
+        auto result = normalize_with_source(slice<SourceScalar>::from_raw_parts(original, usize(5)),
+                                            Normalization(form))
+                          .unwrap();
+        auto plain =
+            normalize(slice<unsigned>::from_raw_parts(values, usize(5)), Normalization(form))
+                .unwrap();
+        ASSERT_EQ(result.len(), plain.len());
+        for (usize i {}; i < result.len(); ++i) EXPECT_EQ(result[i].code_point, plain[i]);
+    }
+    auto expanded = normalize_utf8_with_source("ﬃ"_str, Normalization::NFKC).unwrap();
+    ASSERT_EQ(expanded.len(), usize(3));
+    for (usize i {}; i < expanded.len(); ++i) {
+        EXPECT_EQ(expanded[i].code_point, i == usize(2) ? unsigned('i') : unsigned('f'));
+        EXPECT_EQ(expanded[i].begin, usize());
+        EXPECT_EQ(expanded[i].end, usize(3));
+    }
+    auto composed = normalize_utf8_with_source("a\u0315\u0300"_str, Normalization::NFKC).unwrap();
+    ASSERT_EQ(composed.len(), usize(2));
+    EXPECT_EQ(composed[usize()].code_point, 0xe0u);
+    EXPECT_EQ(composed[usize()].begin, usize());
+    EXPECT_EQ(composed[usize()].end, usize(5));
+    EXPECT_EQ(composed[usize(1)].code_point, 0x315u);
+    EXPECT_EQ(composed[usize(1)].begin, usize(1));
+    EXPECT_EQ(composed[usize(1)].end, usize(3));
+
+    auto reordered =
+        normalize_utf8_with_source("0\u0315\u0300\u0323"_str, Normalization::NFKC).unwrap();
+    ASSERT_EQ(reordered.len(), usize(4));
+    const unsigned codepoints[] { '0', 0x323, 0x300, 0x315 };
+    const unsigned begins[] { 0, 5, 3, 1 };
+    const unsigned ends[] { 1, 7, 5, 3 };
+    for (usize i {}; i < reordered.len(); ++i) {
+        EXPECT_EQ(reordered[i].code_point, codepoints[i.to_primitive()]);
+        EXPECT_EQ(reordered[i].begin, usize(begins[i.to_primitive()]));
+        EXPECT_EQ(reordered[i].end, usize(ends[i.to_primitive()]));
+    }
+
+    auto hangul = normalize_utf8_with_source("가"_str, Normalization::NFC).unwrap();
+    ASSERT_EQ(hangul.len(), usize(1));
+    EXPECT_EQ(hangul[usize()].code_point, 0xac00u);
+    EXPECT_EQ(hangul[usize()].begin, usize());
+    EXPECT_EQ(hangul[usize()].end, usize(6));
+    auto nul = normalize_utf8_with_source("a\0b"_str, Normalization::NFKC).unwrap();
+    ASSERT_EQ(nul.len(), usize(3));
+    EXPECT_EQ(nul[usize(1)].code_point, 0u);
+    EXPECT_EQ(nul[usize(1)].begin, usize(1));
+    EXPECT_EQ(nul[usize(1)].end, usize(2));
+    EXPECT_TRUE(normalize_utf8_with_source(""_str, Normalization::NFKC).unwrap().is_empty());
+    EXPECT_EQ(normalize_utf8_with_source(rstd::str_::from_utf8_unchecked("\xff"_bytes),
+                                         Normalization::NFKC)
+                  .unwrap_err(),
+              Error::InvalidUtf8);
+    SourceScalar bad_range[] { { 'x', usize(5), usize(4) } };
+    EXPECT_EQ(normalize_with_source(slice<SourceScalar>::from_raw_parts(bad_range, usize(1)),
+                                    Normalization::NFKC)
+                  .unwrap_err(),
+              Error::InvalidSourceRange);
+    SourceScalar bad_point[] { { 0x110000, usize(), usize(1) } };
+    EXPECT_EQ(normalize_with_source(slice<SourceScalar>::from_raw_parts(bad_point, usize(1)),
+                                    Normalization::NFKC)
+                  .unwrap_err(),
+              Error::InvalidCodePoint);
+}
+TEST(Unicode, NormalizationSourceCancellation) {
+    Vec<SourceScalar> points;
+    points.push(SourceScalar { 'a', usize(), usize(1) });
+    for (unsigned i {}; i < 128; ++i)
+        points.push(SourceScalar { 0x315, usize(i + 1), usize(i + 2) });
+    points.push(SourceScalar { 0x323, usize(129), usize(130) });
+    struct Counter {
+        unsigned checks {};
+    } counter;
+    auto control = NormalizationControl { &counter, [](const void* context) noexcept -> bool {
+                                             auto& value = *const_cast<Counter*>(
+                                                 static_cast<const Counter*>(context));
+                                             return ++value.checks >= 550;
+                                         } };
+    auto result = normalize_with_source(points.as_slice(), Normalization::NFKC, control);
+    ASSERT_TRUE(result.is_err());
+    EXPECT_EQ(result.unwrap_err(), Error::Cancelled);
+    EXPECT_EQ(counter.checks, 550u);
+    EXPECT_TRUE(normalize_with_source(points.as_slice(), Normalization::NFKC).is_ok());
+}
 TEST(Unicode, Utf8WordClassificationAndLongContexts) {
     auto text = segment_utf8("中カa 12👩‍🚀"_str).unwrap();
     EXPECT_EQ(text.words.len(), usize(6));

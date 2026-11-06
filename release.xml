@@ -1,2 +1,11 @@
+<release version="0.1.1" date="2026-11-07">
+  <description>
+    <ul>
+      <li>Add case_fold, case_fold_utf8 and normalize_with_source.</li>
+      <li>Optimize Unicode property range lookup.</li>
+      <li>Update rstd to 0.1.11.</li>
+    </ul>
+  </description>
+</release>
 <release version="0.1.0" date="2026-10-20">
 </release>

@@ -1,6 +1,6 @@
 [package]
 name = "liunicode"
-version = "0.1.0"
+version = "0.1.1"
 license = "MIT OR Apache-2.0"
 authors = ["hypengw <hypengwip@gmail.com>"]
 
@@ -14,11 +14,11 @@ exceptions = false
 rtti = false
 
 [dependencies]
-rstd-std = { version = "0.1.9", pub = true }
+rstd-std = { version = "0.1.11", pub = true }
 
 [dev-dependencies]
-rstd-test = { version = "0.1.9" }
-rstd-nostd = { version = "0.1.9", usage = "link" }
+rstd-test = { version = "0.1.11" }
+rstd-nostd = { version = "0.1.11", usage = "link" }
 
 [[test]]
 name = "liunicode"
